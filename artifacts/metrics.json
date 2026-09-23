@@ -1,0 +1,22 @@
+{
+  "model": "ResNet-18 (ImageNet pretrained, 4-class fine-tune)",
+  "dataset": "COVID-19 Radiography Database (Chowdhury / Rahman)",
+  "split": "stratified 70 / 15 / 15, seed 42",
+  "test_images": 3175,
+  "test_accuracy": 0.9474,
+  "test_macro_f1": 0.9555,
+  "selection_rule": "best validation macro-F1 (not accuracy)",
+  "epochs": 25,
+  "class_weights": "inverse-frequency from the training split",
+  "per_class": {
+    "COVID": {"precision": 0.980, "recall": 0.987, "f1": 0.983, "support": 542},
+    "Lung_Opacity": {"precision": 0.926, "recall": 0.907, "f1": 0.917, "support": 902},
+    "Normal": {"precision": 0.945, "recall": 0.954, "f1": 0.949, "support": 1529},
+    "Viral Pneumonia": {"precision": 0.970, "recall": 0.975, "f1": 0.973, "support": 202}
+  },
+  "artifacts": [
+    "artifacts/Confusion_Matrix.png",
+    "artifacts/Training_Curves.png",
+    "artifacts/per_class_report.png"
+  ]
+}

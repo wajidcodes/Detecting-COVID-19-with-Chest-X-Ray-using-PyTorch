@@ -1,0 +1,14 @@
+# Core data science
+numpy
+matplotlib
+pandas
+openpyxl
+pillow
+
+# Deep learning
+torch
+torchvision
+ipykernel
+
+# Evaluation metrics (macro-F1, AUC-ROC, confusion matrix, calibration)
+scikit-learn

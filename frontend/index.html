@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PulmoScan AI — COVID-19 Chest X-Ray Diagnostics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Three.js for 3D lung model -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    /* ───────────────────────────── RESET & TOKENS ───────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:          #060b18;
+      --surface:     #0d1526;
+      --surface2:    #121e35;
+      --border:      rgba(99,179,237,.18);
+      --border2:     rgba(99,179,237,.08);
+      --accent:      #3b82f6;
+      --accent2:     #60a5fa;
+      --accent-glow: rgba(59,130,246,.35);
+      --covid:       #ef4444;
+      --normal:      #10b981;
+      --opacity:     #f59e0b;
+      --viral:       #a855f7;
+      --text:        #e2e8f0;
+      --muted:       #64748b;
+      --warning:     #fbbf24;
+      --radius:      14px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ───────────────────────────── GRID NOISE BG ───────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(59,130,246,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    /* ───────────────────────────── HEADER ───────────────────────────── */
+    header {
+      position: relative; z-index: 10;
+      padding: 1.2rem 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(6,11,24,.8);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border2);
+    }
+
+    .logo {
+      display: flex; align-items: center; gap: .75rem;
+    }
+
+    .logo-icon {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; box-shadow: 0 0 18px var(--accent-glow);
+    }
+
+    .logo h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: -.02em; }
+    .logo p  { font-size: .72rem; color: var(--muted); }
+
+    .navbar { display: flex; gap: 1.5rem; align-items: center; }
+    .nav-link { color: var(--text); text-decoration: none; font-size: 0.85rem; font-weight: 500; transition: color 0.2s; }
+    .nav-link:hover { color: var(--accent2); }
+
+    .header-right { display: flex; gap: .6rem; align-items: center; }
+    .badge {
+      padding: .28rem .75rem; border-radius: 99px; font-size: .72rem; font-weight: 600;
+      border: 1px solid;
+    }
+    .badge-green  { background: rgba(16,185,129,.12); color: #34d399; border-color: rgba(16,185,129,.3); }
+    .badge-blue   { background: rgba(59,130,246,.12);  color: var(--accent2); border-color: rgba(59,130,246,.3); }
+    #status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #34d399; box-shadow: 0 0 8px #34d399;
+      animation: pulse-dot 2s infinite;
+    }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ───────────────────────────── HERO METRICS ───────────────────────────── */
+    .metrics-bar {
+      position: relative; z-index: 5;
+      display: flex; gap: 1px;
+      background: var(--border2);
+      border-bottom: 1px solid var(--border2);
+    }
+    .metric-cell {
+      flex: 1; padding: .9rem 1.5rem;
+      background: var(--bg);
+      display: flex; flex-direction: column; align-items: center;
+      gap: .15rem;
+    }
+    .metric-cell .val {
+      font-size: 1.4rem; font-weight: 700; color: var(--accent2);
+    }
+    .metric-cell .lbl { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+    /* ───────────────────────────── MAIN LAYOUT ───────────────────────────── */
+    main {
+      position: relative; z-index: 5;
+      max-width: 1280px; margin: 0 auto;
+      padding: 2rem;
+      display: grid;
+      grid-template-columns: 1fr 1.1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 1.2rem;
+    }
+
+    /* ───────────────────────────── CARDS ───────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 1rem 1.25rem .75rem;
+      border-bottom: 1px solid var(--border2);
+      display: flex; align-items: center; gap: .6rem;
+    }
+    .card-header .icon {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: rgba(59,130,246,.15); border: 1px solid rgba(59,130,246,.3);
+      display: flex; align-items: center; justify-content: center; font-size: .85rem;
+    }
+    .card-header h2 { font-size: .9rem; font-weight: 600; }
+    .card-body { padding: 1.25rem; }
+
+    /* ───────────────────────────── UPLOAD ZONE ───────────────────────────── */
+    #drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 2.5rem 1.5rem;
+      text-align: center; cursor: pointer;
+      transition: all .25s;
+      background: rgba(59,130,246,.03);
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--accent); background: rgba(59,130,246,.08);
+      box-shadow: 0 0 24px var(--accent-glow);
+    }
+    #drop-zone .upload-icon { font-size: 2.8rem; margin-bottom: .75rem; }
+    #drop-zone p { font-size: .88rem; color: var(--muted); }
+    #drop-zone strong { color: var(--accent2); }
+    #file-input { display: none; }
+
+    #preview-wrap {
+      border-radius: 10px; overflow: hidden;
+      border: 1px solid var(--border);
+      background: #000;
+      aspect-ratio: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #preview-wrap img { width: 100%; height: 100%; object-fit: contain; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: .5rem;
+      padding: .6rem 1.25rem; border-radius: 8px;
+      font-size: .85rem; font-weight: 600; cursor: pointer;
+      border: none; transition: all .2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #6366f1);
+      color: #fff; box-shadow: 0 4px 14px rgba(59,130,246,.4);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(59,130,246,.5); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-ghost {
+      background: rgba(255,255,255,.06); color: var(--muted); border: 1px solid var(--border2);
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,.1); color: var(--text); }
+
+    .btn-row { display: flex; gap: .75rem; margin-top: 1rem; }
+    .btn-row .btn { flex: 1; justify-content: center; }
+
+    /* ───────────────────────────── 3D LUNG CANVAS ───────────────────────────── */
+    #lung-canvas-wrap {
+      width: 100%; aspect-ratio: 1;
+      border-radius: 12px; overflow: hidden;
+      background: radial-gradient(ellipse at 50% 60%, #0a1628 60%, #060b18 100%);
+      border: 1px solid var(--border2);
+      position: relative;
+    }
+    #lung-canvas { width: 100% !important; height: 100% !important; display: block; }
+
+    .lung-legend {
+      display: flex; gap: .75rem; flex-wrap: wrap; margin-top: .75rem;
+    }
+    .lung-legend-item {
+      display: flex; align-items: center; gap: .4rem; font-size: .72rem; color: var(--muted);
+    }
+    .legend-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+
+    /* zone overlays on the canvas */
+    #zone-labels {
+      position: absolute; inset: 0; pointer-events: none;
+    }
+    .zone-tag {
+      position: absolute; font-size: .65rem; font-weight: 700;
+      padding: .2rem .45rem; border-radius: 4px;
+      background: rgba(0,0,0,.65); border: 1px solid;
+      transition: all .6s;
+    }
+
+    /* ───────────────────────────── RESULTS PANEL ───────────────────────────── */
+    .prediction-hero {
+      text-align: center;
+      padding: 1.25rem;
+      background: var(--surface2);
+      border-radius: 12px;
+      margin-bottom: 1rem;
+      border: 1px solid var(--border2);
+    }
+    .prediction-class {
+      font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em;
+      margin: .25rem 0;
+    }
+    .confidence-ring {
+      display: inline-block; position: relative;
+      width: 80px; height: 80px; margin: .75rem auto;
+    }
+    .confidence-ring svg { transform: rotate(-90deg); }
+    .ring-text {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .ring-text .pct { font-size: 1.1rem; font-weight: 700; }
+    .ring-text .lbl { font-size: .6rem; color: var(--muted); }
+
+    /* prob bars */
+    .prob-row {
+      display: flex; align-items: center; gap: .65rem;
+      margin-bottom: .65rem;
+    }
+    .prob-label { width: 110px; font-size: .78rem; font-weight: 500; flex-shrink: 0; }
+    .prob-bar-bg {
+      flex: 1; height: 8px; border-radius: 99px;
+      background: rgba(255,255,255,.06);
+      overflow: hidden;
+    }
+    .prob-bar-fill {
+      height: 100%; border-radius: 99px;
+      transition: width 1s cubic-bezier(.4,0,.2,1);
+      width: 0%;
+    }
+    .prob-pct { width: 42px; text-align: right; font-size: .78rem; font-weight: 600; }
+
+    /* ───────────────────────────── HEATMAP PANEL ───────────────────────────── */
+    .heatmap-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: .75rem;
+    }
+    .heatmap-item {
+      border-radius: 10px; overflow: hidden;
+      border: 1px solid var(--border2);
+      background: #000;
+    }
+    .heatmap-item img { width: 100%; display: block; }
+    .heatmap-item .cap {
+      text-align: center; font-size: .7rem; color: var(--muted);
+      padding: .35rem .5rem; background: var(--surface2);
+    }
+
+    /* ───────────────────────────── LOADING OVERLAY ───────────────────────────── */
+    #loading-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(6,11,24,.85); backdrop-filter: blur(8px);
+      align-items: center; justify-content: center; flex-direction: column; gap: 1.25rem;
+    }
+    #loading-overlay.visible { display: flex; }
+    .spinner {
+      width: 52px; height: 52px;
+      border: 3px solid rgba(59,130,246,.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ───────────────────────────── DISCLAIMER ───────────────────────────── */
+    .disclaimer {
+      font-size: .72rem; color: var(--muted); line-height: 1.5;
+      padding: .75rem 1rem;
+      background: rgba(251,191,36,.05); border: 1px solid rgba(251,191,36,.2);
+      border-radius: 8px; margin-top: 1rem;
+    }
+    .disclaimer strong { color: var(--warning); }
+
+    /* ───────────────────────────── ARTIFACTS ───────────────────────────── */
+    .artifacts-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: .75rem;
+    }
+    .artifact-card {
+      border-radius: 10px; overflow: hidden; cursor: pointer;
+      border: 1px solid var(--border2); background: var(--surface2);
+      transition: transform .2s;
+    }
+    .artifact-card:hover { transform: scale(1.02); border-color: var(--accent); }
+    .artifact-card img { width: 100%; display: block; }
+    .artifact-card .art-cap {
+      font-size: .72rem; color: var(--muted); padding: .4rem .6rem;
+    }
+
+    /* ───────────────────────────── SPAN ───────────────────────────── */
+    .span2 { grid-column: span 2; }
+    .span3 { grid-column: span 3; }
+
+    /* ───────────────────────────── SECTION TITLES ───────────────────────────── */
+    .section-title {
+      font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .1em; color: var(--muted); margin-bottom: .75rem;
+    }
+
+    /* hidden helper */
+    .hidden { display: none !important; }
+
+    /* ───────────────────────────── FOOTER ───────────────────────────── */
+    footer {
+      text-align: center; padding: 1.5rem;
+      font-size: .75rem; color: var(--muted);
+      position: relative; z-index: 5;
+      border-top: 1px solid var(--border2);
+    }
+
+    /* ───────────────────────────── RESPONSIVE ───────────────────────────── */
+    @media (max-width: 1024px) {
+      main { grid-template-columns: 1fr 1fr; }
+      .span3 { grid-column: span 2; }
+    }
+    @media (max-width: 640px) {
+      main { grid-template-columns: 1fr; padding: 1rem; }
+      .span2, .span3 { grid-column: span 1; }
+      .metrics-bar { flex-wrap: wrap; }
+      header { flex-direction: column; gap: .75rem; }
+    }
+
+    /* class colors */
+    .color-covid   { color: var(--covid); }
+    .color-normal  { color: var(--normal); }
+    .color-opacity { color: var(--opacity); }
+    .color-viral   { color: var(--viral); }
+  </style>
+</head>
+<body>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p style="font-size:.95rem;font-weight:600;">Analyzing X-Ray with ResNet-18…</p>
+  <p style="font-size:.78rem;color:var(--muted)">Computing Grad-CAM lung-zone attention maps</p>
+</div>
+
+<!-- ─────────────────── NAVBAR ─────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🫁</div>
+    <div>
+      <h1>PulmoScan AI</h1>
+      <p>COVID-19 Chest X-Ray Diagnostics</p>
+    </div>
+  </div>
+
+  <nav class="navbar">
+    <a href="https://www.kaggle.com/datasets/tawsifurrahman/covid19-radiography-database"
+       target="_blank" class="nav-link">📂 Dataset</a>
+    <a href="https://github.com/wajidcodes/Detecting-COVID-19-with-Chest-X-Ray-using-PyTorch"
+       target="_blank" class="nav-link">⭐ GitHub</a>
+  </nav>
+
+  <div class="header-right">
+    <div id="status-dot"></div>
+    <span class="badge badge-green" id="status-text">API Online</span>
+    <span class="badge badge-blue">ResNet-18</span>
+  </div>
+</header>
+
+<!-- ─────────────────── METRICS BAR ─────────────────── -->
+<div class="metrics-bar">
+  <div class="metric-cell"><span class="val">94.7%</span><span class="lbl">Test Accuracy</span></div>
+  <div class="metric-cell"><span class="val">95.5%</span><span class="lbl">Macro F1</span></div>
+  <div class="metric-cell"><span class="val">4</span><span class="lbl">Classes</span></div>
+  <div class="metric-cell"><span class="val">21,165</span><span class="lbl">Dataset Images</span></div>
+  <div class="metric-cell"><span class="val">25</span><span class="lbl">Epochs Trained</span></div>
+</div>
+
+<!-- ─────────────────── MAIN ─────────────────── -->
+<main>
+
+  <!-- ── COL 1: UPLOAD ── -->
+  <div class="card">
+    <div class="card-header">
+      <div class="icon">📤</div>
+      <h2>Upload Chest X-Ray</h2>
+    </div>
+    <div class="card-body">
+
+      <!-- Drop zone -->
+      <div id="drop-zone">
+        <div class="upload-icon">🩻</div>
+        <p><strong>Click or drag & drop</strong> your X-Ray image here</p>
+        <p style="margin-top:.5rem;font-size:.75rem;">Supports PNG / JPG · Chest PA/AP views</p>
+      </div>
+      <input type="file" id="file-input" accept="image/*" />
+
+      <!-- Preview (hidden until file selected) -->
+      <div id="preview-wrap" class="hidden" style="margin-top:1rem;">
+        <img id="preview-img" src="" alt="Preview" />
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="analyze-btn" style="display:none">
+          ⚡ Analyze X-Ray
+        </button>
+        <button class="btn btn-ghost" id="clear-btn" style="display:none">
+          ✕ Clear
+        </button>
+      </div>
+
+      <!-- Sample images note -->
+      <p style="font-size:.72rem;color:var(--muted);margin-top:1rem;text-align:center;">
+        No X-Ray available? Upload any chest PA-view PNG.
+      </p>
+    </div>
+  </div>
+
+  <!-- ── COL 2: 3D LUNGS ── -->
+  <div class="card">
+    <div class="card-header">
+      <div class="icon">🫁</div>
+      <h2>3D Lung Visualization</h2>
+    </div>
+    <div class="card-body" style="padding-bottom:.75rem;">
+      <div id="lung-canvas-wrap">
+        <canvas id="lung-canvas"></canvas>
+        <div id="zone-labels"></div>
+      </div>
+      <div class="lung-legend" style="margin-top:.75rem;">
+        <div class="lung-legend-item"><div class="legend-dot" style="background:#3b82f6;"></div>Healthy tissue</div>
+        <div class="lung-legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>Moderate attention</div>
+        <div class="lung-legend-item"><div class="legend-dot" style="background:#ef4444;"></div>High AI attention</div>
+      </div>
+      <p id="lung-hint" style="font-size:.72rem;color:var(--muted);margin-top:.5rem;text-align:center;">
+        Drag to rotate · Scroll to zoom · Highlights show Grad-CAM zones
+      </p>
+    </div>
+  </div>
+
+  <!-- ── COL 3: RESULTS ── -->
+  <div class="card">
+    <div class="card-header">
+      <div class="icon">📊</div>
+      <h2>Diagnosis Results</h2>
+    </div>
+    <div class="card-body">
+
+      <!-- Empty state -->
+      <div id="empty-state" style="text-align:center;padding:2rem 0;color:var(--muted);">
+        <div style="font-size:3rem;margin-bottom:.75rem;">🔬</div>
+        <p style="font-size:.9rem;">Upload an X-Ray image to begin analysis</p>
+        <p style="font-size:.75rem;margin-top:.4rem;">Model ready to diagnose</p>
+      </div>
+
+      <!-- Results (hidden until response) -->
+      <div id="results-content" class="hidden">
+
+        <div class="prediction-hero">
+          <p style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Predicted Class</p>
+          <div class="prediction-class" id="pred-class">—</div>
+
+          <div class="confidence-ring">
+            <svg width="80" height="80" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="7"/>
+              <circle id="ring-circle" cx="40" cy="40" r="32" fill="none"
+                      stroke="#3b82f6" stroke-width="7"
+                      stroke-dasharray="201" stroke-dashoffset="201"
+                      stroke-linecap="round"
+                      style="transition:stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1)"/>
+            </svg>
+            <div class="ring-text">
+              <span class="pct" id="ring-pct">0%</span>
+              <span class="lbl">confidence</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Probability bars -->
+        <div class="section-title">Class Probabilities</div>
+        <div id="prob-bars">
+          <div class="prob-row">
+            <span class="prob-label color-covid">🦠 COVID-19</span>
+            <div class="prob-bar-bg"><div class="prob-bar-fill" id="bar-covid" style="background:var(--covid)"></div></div>
+            <span class="prob-pct" id="pct-covid">0%</span>
+          </div>
+          <div class="prob-row">
+            <span class="prob-label color-normal">✅ Normal</span>
+            <div class="prob-bar-bg"><div class="prob-bar-fill" id="bar-normal" style="background:var(--normal)"></div></div>
+            <span class="prob-pct" id="pct-normal">0%</span>
+          </div>
+          <div class="prob-row">
+            <span class="prob-label color-opacity">🌫️ Lung Opacity</span>
+            <div class="prob-bar-bg"><div class="prob-bar-fill" id="bar-opacity" style="background:var(--opacity)"></div></div>
+            <span class="prob-pct" id="pct-opacity">0%</span>
+          </div>
+          <div class="prob-row">
+            <span class="prob-label color-viral">🧬 Viral Pneumonia</span>
+            <div class="prob-bar-bg"><div class="prob-bar-fill" id="bar-viral" style="background:var(--viral)"></div></div>
+            <span class="prob-pct" id="pct-viral">0%</span>
+          </div>
+        </div>
+
+        <div class="disclaimer">
+          <strong>⚠️ Disclaimer:</strong> This is a research screening tool. Not a substitute for clinical diagnosis or RT-PCR testing. Always consult a qualified physician.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ROW 2 COL 1-2: HEATMAP ── -->
+  <div class="card span2" id="heatmap-card" style="display:none;">
+    <div class="card-header">
+      <div class="icon">🔥</div>
+      <h2>Grad-CAM Heatmap — AI Attention Regions</h2>
+    </div>
+    <div class="card-body">
+      <p style="font-size:.78rem;color:var(--muted);margin-bottom:1rem;">
+        Grad-CAM (Selvaraju et al., ICCV 2017) shows <em>which pixels</em> the model focused on when making its prediction.
+        Red = highest attention. This is the same region highlighted on the 3D lung above.
+      </p>
+      <div class="heatmap-grid">
+        <div class="heatmap-item">
+          <img id="overlay-img" src="" alt="Grad-CAM Overlay" />
+          <div class="cap">Original + Grad-CAM Overlay</div>
+        </div>
+        <div class="heatmap-item">
+          <img id="heatmap-img" src="" alt="Heatmap" />
+          <div class="cap">Raw Attention Heatmap</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ROW 2 COL 3: MODEL ARTIFACTS ── -->
+  <div class="card" id="artifacts-card" style="display:none;">
+    <div class="card-header">
+      <div class="icon">📈</div>
+      <h2>Training Artifacts</h2>
+    </div>
+    <div class="card-body">
+      <div class="artifacts-grid">
+        <div class="artifact-card" onclick="openImg('artifacts/Confusion_Matrix.png')">
+          <img src="artifacts/Confusion_Matrix.png" alt="Confusion Matrix" onerror="this.style.display='none'"/>
+          <div class="art-cap">Confusion Matrix</div>
+        </div>
+        <div class="artifact-card" onclick="openImg('artifacts/Training_Curves.png')">
+          <img src="artifacts/Training_Curves.png" alt="Training Curves" onerror="this.style.display='none'"/>
+          <div class="art-cap">Training Curves</div>
+        </div>
+        <div class="artifact-card span2" onclick="openImg('artifacts/per_class_report.png')">
+          <img src="artifacts/per_class_report.png" alt="Per-Class Report" onerror="this.style.display='none'"/>
+          <div class="art-cap">Per-Class Classification Report</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  <p>
+    <strong style="color:var(--text);">PulmoScan AI</strong> — COVID-19 Chest X-Ray Diagnostics
+  </p>
+  <p style="margin-top:.4rem;">
+    ResNet-18 &nbsp;·&nbsp; Grad-CAM (Selvaraju et al. ICCV 2017) &nbsp;·&nbsp;
+    <a href="https://www.kaggle.com/datasets/tawsifurrahman/covid19-radiography-database" target="_blank" style="color:var(--muted);text-decoration:none;">COVID-19 Radiography Database (Chowdhury / Rahman 2020)</a> &nbsp;·&nbsp;
+    Test Accuracy: <strong style="color:var(--accent2);">94.74%</strong> &nbsp;·&nbsp;
+    Macro-F1: <strong style="color:var(--accent2);">95.55%</strong>
+  </p>
+  <p style="margin-top:.4rem;">
+    Author: <strong style="color:var(--text);">Wajid Ali</strong> &nbsp;·&nbsp;
+    <a href="https://github.com/wajidcodes" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:.75rem;">⭐ GitHub</a> &nbsp;·&nbsp;
+    <a href="https://www.linkedin.com/in/wajid-ali-developer/" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:.75rem;">💼 LinkedIn</a>
+  </p>
+</footer>
+
+<script>
+/* ──────────────────────────── CONFIG ──────────────────────────── */
+const API = '';
+
+/* ──────────────────────────── THREE.JS 3D LUNG ──────────────────────────── */
+(function init3DLung() {
+  const wrap   = document.getElementById('lung-canvas-wrap');
+  const canvas = document.getElementById('lung-canvas');
+  const W = wrap.offsetWidth  || 400;
+  const H = wrap.offsetHeight || 400;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(W, H);
+  renderer.setClearColor(0x000000, 0);
+
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 100);
+  camera.position.set(0, 0, 5.5);
+
+  /* Lights */
+  scene.add(new THREE.AmbientLight(0x223355, 1.5));
+  const dir = new THREE.DirectionalLight(0x6aadff, 2.5);
+  dir.position.set(3, 4, 5);
+  scene.add(dir);
+  const rim = new THREE.DirectionalLight(0x8b5cf6, 1.2);
+  rim.position.set(-3, -2, -3);
+  scene.add(rim);
+
+  /* ── Helper to build one lung lobe ─────────────────────────── */
+  function makeLung(side, color) {
+    const group = new THREE.Group();
+    // Main body
+    const geo = new THREE.SphereGeometry(.9, 32, 32);
+    // Squish into lung shape
+    geo.scale(1, 1.45, .68);
+    const mat = new THREE.MeshPhongMaterial({
+      color, transparent: true, opacity: .82,
+      shininess: 80, specular: 0x334466,
+    });
+    group.add(new THREE.Mesh(geo, mat));
+
+    // Upper lobe
+    const uGeo = new THREE.SphereGeometry(.5, 20, 20);
+    uGeo.scale(1, 1.2, .65);
+    const uMesh = new THREE.Mesh(uGeo, mat.clone());
+    uMesh.position.set(side * .15, 1.1, 0);
+    group.add(uMesh);
+
+    // Lower lobe
+    const lGeo = new THREE.SphereGeometry(.55, 20, 20);
+    lGeo.scale(1, 1, .7);
+    const lMesh = new THREE.Mesh(lGeo, mat.clone());
+    lMesh.position.set(side * -.1, -.7, .1);
+    group.add(lMesh);
+
+    // Wireframe overlay
+    const wMat = new THREE.MeshBasicMaterial({
+      color: 0x3b82f6, wireframe: true, opacity: .12, transparent: true,
+    });
+    group.add(new THREE.Mesh(geo.clone(), wMat));
+
+    group.position.x = side * 1.1;
+    return group;
+  }
+
+  const leftLung  = makeLung(-1, 0x1d4ed8);
+  const rightLung = makeLung( 1, 0x1d4ed8);
+  scene.add(leftLung);
+  scene.add(rightLung);
+
+  /* Bronchial tree (simple cylinders) */
+  function addBronchi() {
+    const mat = new THREE.MeshPhongMaterial({ color: 0x334466, shininess: 60 });
+    // Main trunk
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.07,.1,1.2,8), mat);
+    trunk.position.set(0, 0, 0);
+    scene.add(trunk);
+    // Left branch
+    const lb = new THREE.Mesh(new THREE.CylinderGeometry(.05,.07,.8,8), mat);
+    lb.rotation.z = .5; lb.position.set(-0.5, .3, 0);
+    scene.add(lb);
+    // Right branch
+    const rb = new THREE.Mesh(new THREE.CylinderGeometry(.05,.07,.8,8), mat);
+    rb.rotation.z = -.5; rb.position.set(.5, .3, 0);
+    scene.add(rb);
+  }
+  addBronchi();
+
+  /* Glow blobs (zone highlight markers) — hidden by default */
+  const ZONES = {
+    upper_left:  { pos: [-1.1,  1.1, .2], mesh: null },
+    lower_left:  { pos: [-1.2, -.7,  .2], mesh: null },
+    upper_right: { pos: [ 1.1,  1.1, .2], mesh: null },
+    lower_right: { pos: [ 1.2, -.7,  .2], mesh: null },
+  };
+
+  for (const [key, z] of Object.entries(ZONES)) {
+    const blobGeo = new THREE.SphereGeometry(.45, 16, 16);
+    const blobMat = new THREE.MeshBasicMaterial({
+      color: 0xef4444, transparent: true, opacity: 0,
+    });
+    const blob = new THREE.Mesh(blobGeo, blobMat);
+    blob.position.set(...z.pos);
+    scene.add(blob);
+    z.mesh = blob;
+  }
+  window._lungZones = ZONES; // expose for results handler
+
+  /* Orbit controls (manual) */
+  let isDragging = false, lastX = 0, lastY = 0, rotX = 0, rotY = 0;
+  let zoomLevel = 5.5;
+
+  canvas.addEventListener('mousedown', e => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
+  window.addEventListener('mouseup', () => isDragging = false);
+  window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    rotY += (e.clientX - lastX) * .008;
+    rotX += (e.clientY - lastY) * .008;
+    rotX = Math.max(-1, Math.min(1, rotX));
+    lastX = e.clientX; lastY = e.clientY;
+  });
+  canvas.addEventListener('wheel', e => {
+    zoomLevel = Math.max(3, Math.min(10, zoomLevel + e.deltaY * .005));
+  });
+
+  // Touch
+  let lastTouchX = 0, lastTouchY = 0;
+  canvas.addEventListener('touchstart', e => { lastTouchX = e.touches[0].clientX; lastTouchY = e.touches[0].clientY; });
+  canvas.addEventListener('touchmove', e => {
+    const dx = e.touches[0].clientX - lastTouchX;
+    const dy = e.touches[0].clientY - lastTouchY;
+    rotY += dx * .008; rotX += dy * .008;
+    lastTouchX = e.touches[0].clientX; lastTouchY = e.touches[0].clientY;
+  });
+
+  /* Idle rotation */
+  let idleTimer = 0;
+
+  /* Animate */
+  function animate(t) {
+    requestAnimationFrame(animate);
+    idleTimer += .016;
+
+    // Gentle idle animation
+    if (!isDragging) {
+      rotY += .004;
+    }
+
+    leftLung.rotation.y  = rotY;
+    rightLung.rotation.y = rotY;
+    leftLung.rotation.x  = rotX;
+    rightLung.rotation.x = rotX;
+
+    // Breathe
+    const breath = 1 + Math.sin(t * .001) * .018;
+    leftLung.scale.set(1, breath, 1);
+    rightLung.scale.set(1, breath, 1);
+
+    // Zone blob pulse
+    for (const z of Object.values(ZONES)) {
+      if (z.mesh.material.opacity > .01) {
+        z.mesh.scale.setScalar(1 + Math.sin(t * .002) * .08);
+      }
+    }
+
+    camera.position.z = zoomLevel;
+    renderer.render(scene, camera);
+  }
+  animate(0);
+
+  /* Resize */
+  const ro = new ResizeObserver(() => {
+    const w = wrap.offsetWidth, h = wrap.offsetHeight || w;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  });
+  ro.observe(wrap);
+
+})();
+
+/* ──────────────────────────── ZONE HIGHLIGHT ──────────────────────────── */
+function applyZoneHighlights(zones) {
+  /* zones: { upper_left, lower_left, upper_right, lower_right } 0-1 */
+  if (!window._lungZones) return;
+
+  function score2color(s) {
+    if (s < .15) return { color: 0x3b82f6, opacity: 0 };
+    if (s < .4)  return { color: 0xf59e0b, opacity: .35 };
+    return              { color: 0xef4444, opacity: .6 };
+  }
+
+  for (const [key, z] of Object.entries(window._lungZones)) {
+    const s = zones[key] ?? 0;
+    const { color, opacity } = score2color(s);
+    z.mesh.material.color.setHex(color);
+    z.mesh.material.opacity = opacity;
+  }
+
+  // Update 2D zone labels
+  const labelsEl = document.getElementById('zone-labels');
+  labelsEl.innerHTML = '';
+  const positions = {
+    upper_left:  { left: '18%', top: '22%' },
+    lower_left:  { left: '12%', top: '65%' },
+    upper_right: { right: '18%', top: '22%' },
+    lower_right: { right: '12%', top: '65%' },
+  };
+  for (const [key, z] of Object.entries(window._lungZones)) {
+    const s = zones[key] ?? 0;
+    if (s < .1) continue;
+    const el = document.createElement('div');
+    el.className = 'zone-tag';
+    const pos = positions[key];
+    Object.assign(el.style, pos);
+    const pct = Math.round(s * 100);
+    const col = s < .4 ? '#f59e0b' : '#ef4444';
+    el.style.color = col;
+    el.style.borderColor = col + '66';
+    el.textContent = `${key.replace('_',' ')} ${pct}%`;
+    labelsEl.appendChild(el);
+  }
+}
+
+/* ──────────────────────────── UPLOAD LOGIC ──────────────────────────── */
+const dropZone    = document.getElementById('drop-zone');
+const fileInput   = document.getElementById('file-input');
+const previewWrap = document.getElementById('preview-wrap');
+const previewImg  = document.getElementById('preview-img');
+const analyzeBtn  = document.getElementById('analyze-btn');
+const clearBtn    = document.getElementById('clear-btn');
+
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault(); dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+let currentFile = null;
+
+function handleFile(file) {
+  if (!file.type.match('image.*')) { alert('Please select an image file.'); return; }
+  currentFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    previewImg.src = ev.target.result;
+    dropZone.classList.add('hidden');
+    previewWrap.classList.remove('hidden');
+    analyzeBtn.style.display = 'flex';
+    clearBtn.style.display   = 'flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+clearBtn.addEventListener('click', () => {
+  currentFile = null; fileInput.value = '';
+  dropZone.classList.remove('hidden');
+  previewWrap.classList.add('hidden');
+  analyzeBtn.style.display = 'none';
+  clearBtn.style.display   = 'none';
+  document.getElementById('results-content').classList.add('hidden');
+  document.getElementById('empty-state').classList.remove('hidden');
+  document.getElementById('heatmap-card').style.display   = 'none';
+  document.getElementById('artifacts-card').style.display = 'none';
+  applyZoneHighlights({});
+});
+
+/* ──────────────────────────── ANALYZE ──────────────────────────── */
+analyzeBtn.addEventListener('click', async () => {
+  if (!currentFile) return;
+
+  document.getElementById('loading-overlay').classList.add('visible');
+
+  const fd = new FormData();
+  fd.append('file', currentFile);
+
+  try {
+    const res  = await fetch(`${API}/predict`, { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(`API error ${res.status}`);
+    const data = await res.json();
+    showResults(data);
+  } catch (err) {
+    alert('Error: ' + err.message + '\n\nMake sure the backend is running on port 8000.');
+    console.error(err);
+  } finally {
+    document.getElementById('loading-overlay').classList.remove('visible');
+  }
+});
+
+/* ──────────────────────────── SHOW RESULTS ──────────────────────────── */
+const CLASS_COLORS = {
+  'COVID':           'var(--covid)',
+  'Normal':          'var(--normal)',
+  'Lung_Opacity':    'var(--opacity)',
+  'Viral Pneumonia': 'var(--viral)',
+};
+
+function showResults(data) {
+  // Prediction badge
+  const predClass = data.predicted_class;
+  const predEl    = document.getElementById('pred-class');
+  predEl.textContent = predClass.replace('_', ' ');
+  predEl.style.color = CLASS_COLORS[predClass] || 'var(--text)';
+
+  // Confidence ring
+  const conf = data.confidence;
+  document.getElementById('ring-pct').textContent = conf.toFixed(1) + '%';
+  const circ = document.getElementById('ring-circle');
+  const offset = 201 * (1 - conf / 100);
+  circ.style.strokeDashoffset = offset;
+  circ.style.stroke = CLASS_COLORS[predClass] || 'var(--accent)';
+
+  // Probability bars
+  const p = data.probabilities;
+  function setBar(id, barId, val) {
+    document.getElementById(id).textContent = val.toFixed(1) + '%';
+    document.getElementById(barId).style.width = val + '%';
+  }
+  setBar('pct-covid',   'bar-covid',   p['COVID']            || 0);
+  setBar('pct-normal',  'bar-normal',  p['Normal']           || 0);
+  setBar('pct-opacity', 'bar-opacity', p['Lung_Opacity']     || 0);
+  setBar('pct-viral',   'bar-viral',   p['Viral Pneumonia']  || 0);
+
+  // Show results panel
+  document.getElementById('empty-state').classList.add('hidden');
+  document.getElementById('results-content').classList.remove('hidden');
+
+  // Heatmap images
+  if (data.overlay_png && data.heatmap_png) {
+    document.getElementById('overlay-img').src  = 'data:image/png;base64,' + data.overlay_png;
+    document.getElementById('heatmap-img').src  = 'data:image/png;base64,' + data.heatmap_png;
+    document.getElementById('heatmap-card').style.display = '';
+  }
+
+  // 3D lung zones
+  if (data.zones) {
+    applyZoneHighlights(data.zones);
+  }
+
+  // Show artifacts
+  document.getElementById('artifacts-card').style.display = '';
+}
+
+/* ──────────────────────────── HELPERS ──────────────────────────── */
+function openImg(url) { window.open(url, '_blank'); }
+
+/* ──────────────────────────── API HEALTH CHECK ──────────────────────────── */
+async function checkBackend() {
+  try {
+    const r = await fetch(`${API}/health`, { signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      document.getElementById('status-text').textContent = 'API Online';
+      document.getElementById('status-text').className = 'badge badge-green';
+      document.getElementById('status-dot').style.background = '#34d399';
+      document.getElementById('status-dot').style.boxShadow = '0 0 8px #34d399';
+    }
+  } catch {
+    document.getElementById('status-text').textContent = 'API Offline';
+    document.getElementById('status-text').className = 'badge';
+    document.getElementById('status-text').style.cssText = 'background:rgba(239,68,68,.12);color:#f87171;border-color:rgba(239,68,68,.3);';
+    document.getElementById('status-dot').style.background = '#ef4444';
+    document.getElementById('status-dot').style.boxShadow = '0 0 8px #ef4444';
+  }
+}
+checkBackend();
+setInterval(checkBackend, 30000);
+</script>
+</body>
+</html>
