@@ -81,13 +81,21 @@ METRICS = json.loads(METRICS_PATH.read_text()) if METRICS_PATH.exists() else {}
 
 
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 @app.get("/", response_class=HTMLResponse)
 def root():
     html_path = ROOT / "frontend" / "index.html"
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
-    return "<h1>PulmoScan AI</h1><p>Frontend UI not found.</p>"
+    return "<h1>PulmoScan AI</h1><p>Frontend not found.</p>"
+
+@app.get("/training.html", response_class=HTMLResponse)
+def training_page():
+    html_path = ROOT / "frontend" / "training.html"
+    if html_path.exists():
+        return html_path.read_text(encoding="utf-8")
+    return "<h1>Training Results</h1><p>Page not found.</p>"
 
 @app.get("/api/status")
 def status():
