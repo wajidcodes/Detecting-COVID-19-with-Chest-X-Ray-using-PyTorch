@@ -152,7 +152,7 @@ docker compose up --build
 # API Docs: http://localhost:8000/docs
 ```
 
-The app starts immediately with the pre-trained model. Upload any chest X-ray PNG/JPG to get a classification prediction — for learning purposes only, not a diagnosis.
+Note on model weights: `models/resnet18_covid.pth` is not included in this repository, so place a trained weights file there before running inference — see "Re-Training the Model" below for how to produce one. Once the weights file is in place, the app starts with the pre-trained model. Upload any chest X-ray PNG/JPG to get a classification prediction — for learning purposes only, not a diagnosis.
 
 ---
 
