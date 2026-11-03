@@ -152,7 +152,7 @@ docker compose up --build
 # API Docs: http://localhost:8000/docs
 ```
 
-The app starts immediately with the pre-trained model. Upload any chest X-ray PNG/JPG to get a diagnosis.
+The app starts immediately with the pre-trained model. Upload any chest X-ray PNG/JPG to get a classification prediction — for learning purposes only, not a diagnosis.
 
 ---
 
@@ -167,7 +167,7 @@ When you analyze an X-ray:
 4. Three.js renders glowing blobs on the 3D lung model at the corresponding zones
 5. **Blue** = healthy/low attention · **Orange** = moderate · **Red** = high AI attention
 
-This provides a fully interactive, in-browser 3D visualization to help understand the AI's diagnostic focus.
+This provides a fully interactive, in-browser 3D visualization to help understand the AI's prediction focus.
 
 ---
 
