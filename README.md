@@ -7,7 +7,6 @@
 [![Python](https://img.shields.io/badge/Python-3.10-blue?logo=python)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1-orange?logo=pytorch)](https://pytorch.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.103-green?logo=fastapi)](https://fastapi.tiangolo.com)
-[![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker)](https://docker.com)
 [![Three.js](https://img.shields.io/badge/Three.js-r128-black)](https://threejs.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -24,7 +23,7 @@
 - **3D interactive lung visualization** (Three.js) — highlights infected zones based on Grad-CAM attention
 - **Grad-CAM heatmap overlay** — shows exactly which lung regions the AI focused on (not thresholding — actual gradient-weighted class activation maps)
 - **FastAPI backend** — real-time inference with the trained model
-- **Docker Compose** — one command to run everything
+- **One-command start** — `bash start.sh` runs the FastAPI backend and serves the UI
 
 ---
 
@@ -67,7 +66,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Frontend (Nginx)                                   │
+│  Frontend (served by FastAPI)                       │
 │  ├── Three.js    →  3D Interactive Lung Model       │
 │  ├── Vanilla JS  →  Upload, Results, API calls      │
 │  └── Pure CSS    →  Dark medical UI design          │
@@ -77,7 +76,7 @@
 │  ├── Grad-CAM    →  Lung zone attention heatmaps    │
 │  └── /predict    →  REST API endpoint               │
 ├─────────────────────────────────────────────────────┤
-│  Docker Compose  →  Orchestrates both services      │
+│  start.sh → Runs the FastAPI backend (serves UI)    │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -88,71 +87,71 @@ Standard, well-understood architecture with ImageNet pre-training. Achieves 94.7
 Selvaraju et al. (ICCV 2017) — gradient-weighted class activation mapping. Shows *which pixels* influence the prediction, without any post-hoc thresholding. The heatmap zones are then mapped onto the 3D lung model for an intuitive visual explanation.
 
 **Why Class-Weighted Loss?**
-The dataset has 10,192 Normal vs only 1,345 Viral Pneumonia images (7.6× imbalance). Without weighting, the model would learn to guess "Normal" most of the time. Inverse-frequency weighting (Buda et al. Neural Networks 2018) corrects this.
+The dataset has 10,192 Normal vs only 1,345 Viral Pneumonia images (7.6× imbalance). Without weighting, the model would learn to guess \"Normal\" most of the time. Inverse-frequency weighting (Buda et al. Neural Networks 2018) corrects this.
 
 ---
 
 ## 📂 Project Structure
 
 ```
-Covid-19-Test-Project/
-├── docker-compose.yml           # Run everything with one command
+Detecting-COVID-19-with-Chest-X-Ray-using-PyTorch/
+├── start.sh                   # One-command start (FastAPI on 127.0.0.1:8000)
+├── requirements.txt           # Training dependencies (torch, scikit-learn, ...)
+├── train.py                   # Local training script
 │
 ├── backend/
-│   ├── main.py                  # FastAPI inference API with Grad-CAM
-│   ├── requirements.txt         # Python dependencies
-│   └── Dockerfile
+│   ├── main.py                # FastAPI inference API with Grad-CAM
+│   ├── requirements.txt       # Backend dependencies (FastAPI, uvicorn, torch)
+│   └── resnet18_covid_best.pth # Trained weights (included, loaded automatically)
 │
 ├── frontend/
-│   ├── index.html               # Full UI (Three.js 3D lung + results)
-│   ├── nginx.conf               # Reverse proxy to backend
-│   ├── artifacts/               # Training result images (shown in UI)
-│   └── Dockerfile
+│   ├── index.html             # Full UI (Three.js 3D lung + results)
+│   ├── script.js              # Upload, results, API calls
+│   ├── style.css              # Dark medical UI design
+│   ├── training.html          # Training results page
+│   ├── artifacts/             # Training result images (shown in UI)
+│   └── samples/               # Sample X-ray images
 │
 ├── src/
-│   ├── model.py                 # ResNet-18 definition
-│   ├── dataset.py               # Dataset & transforms
-│   └── gradcam.py               # Grad-CAM implementation
+│   ├── model.py               # ResNet-18 definition
+│   ├── dataset.py             # Dataset & transforms
+│   └── gradcam.py             # Grad-CAM implementation
 │
 ├── notebooks/
-│   └── train_resnet18.ipynb     # Kaggle/Colab training notebook
+│   └── train_resnet18.ipynb   # Kaggle/Colab training notebook
 │
-├── models/
-│   └── resnet18_covid.pth       # Trained weights
+├── sample_images/             # Sample X-rays for quick testing
 │
-├── artifacts/
-│   ├── Confusion_Matrix.png
-│   ├── Training_Curves.png
-│   ├── per_class_report.png
-│   └── metrics.json             # All test metrics (machine-readable)
-│
-└── train.py                     # Local training script
+└── artifacts/
+    ├── Confusion_Matrix.png
+    ├── Training_Curves.png
+    ├── per_class_report.png
+    └── metrics.json           # All test metrics (machine-readable)
 ```
 
 ---
 
-## 🚀 Quick Start — Run with Docker
+## 🚀 Quick Start — Run Locally
 
-**Prerequisites:** Docker and Docker Compose installed.
+**Prerequisites:** Python 3.10 and pip installed.
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/wajidcodes/Detecting-COVID-19-with-Chest-X-Ray-using-PyTorch.git
 cd Detecting-COVID-19-with-Chest-X-Ray-using-PyTorch
 
-# 2. Add your user to the docker group (one-time setup, avoids sudo)
-sudo usermod -aG docker $USER
-newgrp docker
+# 2. Install the backend dependencies
+pip install -r backend/requirements.txt
 
-# 3. Run
-docker compose up --build
+# 3. Run (activates .venv if one exists)
+bash start.sh
 
 # 4. Open in browser
-# Web UI:   http://localhost:3000
-# API Docs: http://localhost:8000/docs
+# Web UI:   http://127.0.0.1:8000
+# API Docs: http://127.0.0.1:8000/docs
 ```
 
-Note on model weights: `models/resnet18_covid.pth` is not included in this repository, so place a trained weights file there before running inference — see "Re-Training the Model" below for how to produce one. Once the weights file is in place, the app starts with the pre-trained model. Upload any chest X-ray PNG/JPG to get a classification prediction — for learning purposes only, not a diagnosis.
+Note on model weights: the trained weights (`backend/resnet18_covid_best.pth`) are included in this repository, so inference works out of the box. To use your own retrained weights instead, place them at `models/resnet18_covid.pth` — see \"Re-Training the Model\" below for how to produce them. Upload any chest X-ray PNG/JPG to get a classification prediction — for learning purposes only, not a diagnosis.
 
 ---
 
@@ -184,7 +183,7 @@ This provides a fully interactive, in-browser 3D visualization to help understan
    data_dir = '/kaggle/input/covid19-radiography-database/COVID-19_Radiography_Dataset'
    ```
 6. **Run All** — takes approximately **~1 hour** on T4x2
-7. Download `resnet18_covid_best.pth` → rename to `resnet18_covid.pth` → place in `models/`
+7. Download `resnet18_covid_best.pth` → replace the bundled `backend/resnet18_covid_best.pth` with it (the backend loads that file first)
 
 ---
 
@@ -210,6 +209,6 @@ The Grad-CAM zones mapped onto the 3D lung illustration are AI attention approxi
 
 Made with ❤️ by **[Wajid Ali](https://github.com/wajidcodes)**
 
-[GitHub](https://github.com/wajidcodes) · [LinkedIn](https://www.linkedin.com/in/wajid-ali-developer/)
+[GitHub](https://github.com/wajidcodes) · [LinkedIn](https://www.linkedin.com/in/wajid-ali-developer/) · [Portfolio](https://wajidali-portfolio.vercel.app)
 
 </div>
