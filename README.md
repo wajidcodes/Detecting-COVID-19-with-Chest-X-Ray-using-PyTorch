@@ -220,7 +220,7 @@ data/
 └── splits.csv        # image path, class, split (train/val/test)
 ```
 
-The dataset itself is **not** in the repo — download the COVID-19 Radiography Database (v2) from Kaggle and lay it out as above, then run `train.py`.
+The dataset itself is **not** in the repo — download the COVID-19 Radiography Database (v2) from Kaggle and lay it out as above, then install the training dependencies with `pip install -r requirements.txt` (the Quick start installs only the backend ones) and run the script with `python train.py`.
 
 `splits.csv` is not created by `train.py` — make it yourself, one row per image with columns `image_path`, `class_id`, `split` (`train` / `val` / `test`). If the file is missing, `train.py` falls back to reading the class folders directly and treats all images as the requested split.
 
